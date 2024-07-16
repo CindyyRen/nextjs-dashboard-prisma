@@ -1,8 +1,10 @@
 import Image from 'next/image';
 import { UpdateInvoice, DeleteInvoice } from '@/app/ui/invoices/buttons';
 import InvoiceStatus from '@/app/ui/invoices/status';
-import { formatDateToLocal, formatCurrency } from '@/app/lib/utils';
-import { fetchFilteredInvoices } from '@/app/lib/data';
+import { formatCurrency } from '@/app/lib/utils';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 export default async function InvoicesTable({
   query,
@@ -27,15 +29,17 @@ export default async function InvoicesTable({
                   <div>
                     <div className="mb-2 flex items-center">
                       <Image
-                        src={invoice.image_url}
+                        src={invoice.customer.image_url}
                         className="mr-2 rounded-full"
                         width={28}
                         height={28}
-                        alt={`${invoice.name}'s profile picture`}
+                        alt={`${invoice.customer.name}'s profile picture`}
                       />
-                      <p>{invoice.name}</p>
+                      <p>{invoice.customer.name}</p>
                     </div>
-                    <p className="text-sm text-gray-500">{invoice.email}</p>
+                    <p className="text-sm text-gray-500">
+                      {invoice.customer.email}
+                    </p>
                   </div>
                   <InvoiceStatus status={invoice.status} />
                 </div>
@@ -44,7 +48,7 @@ export default async function InvoicesTable({
                     <p className="text-xl font-medium">
                       {formatCurrency(invoice.amount)}
                     </p>
-                    <p>{formatDateToLocal(invoice.date)}</p>
+                    {/* <p>{formatDateToLocal(invoice.date)}</p> */}
                   </div>
                   <div className="flex justify-end gap-2">
                     <UpdateInvoice id={invoice.id} />
@@ -86,23 +90,23 @@ export default async function InvoicesTable({
                   <td className="whitespace-nowrap py-3 pl-6 pr-3">
                     <div className="flex items-center gap-3">
                       <Image
-                        src={invoice.image_url}
+                        src={invoice.customer.image_url}
                         className="rounded-full"
                         width={28}
                         height={28}
-                        alt={`${invoice.name}'s profile picture`}
+                        alt={`${invoice.customer.name}'s profile picture`}
                       />
-                      <p>{invoice.name}</p>
+                      <p>{invoice.customer.name}</p>
                     </div>
                   </td>
                   <td className="whitespace-nowrap px-3 py-3">
-                    {invoice.email}
+                    {invoice.customer.email}
                   </td>
                   <td className="whitespace-nowrap px-3 py-3">
                     {formatCurrency(invoice.amount)}
                   </td>
                   <td className="whitespace-nowrap px-3 py-3">
-                    {formatDateToLocal(invoice.date)}
+                    {/* {formatDateToLocal(invoice.date)} */}
                   </td>
                   <td className="whitespace-nowrap px-3 py-3">
                     <InvoiceStatus status={invoice.status} />
@@ -121,4 +125,51 @@ export default async function InvoicesTable({
       </div>
     </div>
   );
+}
+export async function fetchFilteredInvoices(
+  query: string,
+  currentPage: number,
+) {
+  const ITEMS_PER_PAGE = 5;
+  const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+
+  try {
+    const invoices = await prisma.invoice.findMany({
+      select: {
+        id: true,
+        amount: true,
+        date: true,
+        status: true,
+        customer: {
+          select: {
+            name: true,
+            email: true,
+            image_url: true,
+          },
+        },
+      },
+      where: query
+        ? {
+            OR: [
+              { customer: { name: { contains: query } } },
+              { customer: { email: { contains: query } } },
+              // { amount: { equals: parseInt(query) } },
+              // { amount: { equals: parseFloat(query) * 100 } },
+              // { date: { equals: query } },
+              { status: { contains: query } },
+            ],
+          }
+        : {},
+      orderBy: {
+        date: 'desc',
+      },
+      take: ITEMS_PER_PAGE,
+      skip: offset,
+    });
+
+    return invoices;
+  } catch (error) {
+    console.error('Prisma Error:', error);
+    throw new Error('Failed to fetch invoices.');
+  }
 }
